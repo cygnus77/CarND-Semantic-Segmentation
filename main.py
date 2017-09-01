@@ -39,6 +39,13 @@ def load_vgg(sess, vgg_path):
         sess.graph.get_tensor_by_name(vgg_layer4_out_tensor_name), sess.graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
 tests.test_load_vgg(load_vgg, tf)
 
+def print_tensor_shape(op, msg, tensor):
+    return tf.Print(op, data=[tf.shape(tensor)], message=msg, first_n=5, summarize=5)
+
+def conv_transpose(layer, name, filters):
+    layer = tf.layers.conv2d_transpose(layer, filters=filters, kernel_size=(3,3), strides=(2,2), padding="SAME", name=name, kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+    #layer = print_tensor_shape(layer, name, layer)
+    return layer
 
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
@@ -49,37 +56,15 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
-    # TODO: Implement function
-
-    # layer8 1x1x4096 -> 14x14x512
-    layer8 = tf.layers.conv2d_transpose(vgg_layer7_out, filters=512, kernel_size=(2,2), strides=(14,14), padding="SAME")
-    #print(layer8.get_shape().as_list())
-
-    # layer9 14x14x512 -> 28x28x512
-    layer9a = tf.layers.conv2d_transpose(layer8, filters=512, kernel_size=(2,2), strides=(2,2), padding="SAME")
-    #print(layer9a.get_shape().as_list())
-
-    layer9 = tf.add(layer9a, vgg_layer4_out)
-
-    # layer10 28x28x512 -> 56x56x256
-    layer10a = tf.layers.conv2d_transpose(layer9, filters=256, kernel_size=(2,2), strides=(2,2), padding="SAME")
-    #print(layer10a.get_shape().as_list())
-
-    layer10 = tf.add(layer10a, vgg_layer3_out)
-
-    # layer11 56x56x256 -> 112x112x128
-    layer11 = tf.layers.conv2d_transpose(layer10, filters=128, kernel_size=(2,2), strides=(2,2), padding="SAME")
-    #print(layer11.get_shape().as_list())
-
-    # layer11 112x112x128 -> 224,224,64
-    layer12 = tf.layers.conv2d_transpose(layer11, filters=64, kernel_size=(2,2), strides=(2,2), padding="SAME")
-    #print(layer12.get_shape().as_list())
-
-    # layer11 224,224x64 -> 224,224,num_classes
-    layer13 = tf.layers.conv2d_transpose(layer12, filters=num_classes, kernel_size=(2,2), strides=(1,1), padding="SAME")
-    #print(layer13.get_shape().as_list())
-
-    return layer13
+    conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='SAME', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+    layer8 = conv_transpose(conv1x1, "layer8", filters=512)
+    layer8 = tf.add(layer8, vgg_layer4_out)
+    layer9 = conv_transpose(layer8, "layer9", filters=256)
+    layer9 = tf.add(layer9, vgg_layer3_out)
+    layer10 = conv_transpose(layer9, "layer10", filters=128)
+    layer11 = conv_transpose(layer10, "layer11", filters=64)
+    layer12 = conv_transpose(layer11, "layer12", filters=num_classes)
+    return layer12
 tests.test_layers(layers)
 
 
@@ -97,7 +82,7 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
 
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
 
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     train_op = optimizer.minimize(cross_entropy_loss)
 
     return logits, train_op, cross_entropy_loss
@@ -122,6 +107,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     epoch = 1
     while epoch < epochs:
 
+        print("Starting epoch: %d" % (epoch))
         start_time = time.time()
 
         step = 1
@@ -161,8 +147,8 @@ def run():
     runs_dir = './runs'
     tests.test_for_kitti_dataset(data_dir)
     learning_rate = 0.0001
-    batch_size = 50
-    epochs = 15
+    batch_size = 10
+    epochs = 10
 
     # Download pretrained vgg model
     helper.maybe_download_pretrained_vgg(data_dir)
@@ -193,10 +179,10 @@ def run():
 
         # Train NN using the train_nn function
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image_placeholder,
-             labels_placeholder, keep_prob_placeholder, learning_rate, keep_prob_value=0.75)
+             labels_placeholder, keep_prob_placeholder, learning_rate, keep_prob_value=0.5)
 
         # Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob_placeholder, input_image_placeholder)
 
         # OPTIONAL: Apply the trained model to a video
 
