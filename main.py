@@ -10,6 +10,7 @@ import project_tests as tests
 import shutil
 from glob import glob
 import re
+from moviepy.editor import VideoFileClip
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
@@ -54,17 +55,6 @@ def print_tensor_shape(op, msg, tensor):
   """
   return tf.Print(op, data=[tf.shape(tensor)], message=msg, first_n=5, summarize=5)
 
-def conv_transpose(layer, name, filters, strides=(2,2)):
-  """
-  Return a transpose convolution operation that upscales previous layer by factor of 2
-  Uses a 4x4 kernel, 2x2 stride and globally defined regularizer
-  Padding SAME is essential for maintaining correct size
-  """
-  layer = tf.layers.conv2d_transpose(layer, filters=filters, kernel_size=(4,4), strides=strides, padding="SAME", name=name, kernel_regularizer=regularizer)
-  # Tracing: print shape of tensor passed into graph
-  #layer = print_tensor_shape(layer, name, layer)
-  return layer
-
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
   """
   Create the layers for a fully convolutional network.  Build skip-layers using the vgg layers.
@@ -83,11 +73,15 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
   # 1x1 convolution to connect decoder to encoder part of FCN
   layer8 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='SAME', kernel_regularizer=regularizer)
-  layer9 = conv_transpose(layer8, "layer9", filters=512)
+  #layer8 = print_tensor_shape(layer8, 'layer8', layer8)
+  layer9 = tf.layers.conv2d_transpose(layer8, filters=512, kernel_size=(4,4), strides=(2,2), padding='SAME', name='layer9', kernel_regularizer=regularizer)
+  #layer9 = print_tensor_shape(layer9, 'layer9', layer9)
   layer9 = tf.add(layer9, vgg_layer4_out)
-  layer10 = conv_transpose(layer9, "layer10", filters=256)
+  layer10 = tf.layers.conv2d_transpose(layer9, filters=256, kernel_size=(4,4), strides=(2,2), padding="SAME", name='layer10', kernel_regularizer=regularizer)
+  #layer10 = print_tensor_shape(layer10, 'layer10', layer10)
   layer10 = tf.add(layer10, vgg_layer3_out)
-  layer11 = conv_transpose(layer10, "layer11", filters=num_classes, strides=(8,8))
+  layer11 = tf.layers.conv2d_transpose(layer10, filters=num_classes, kernel_size=(8,8), strides=(8,8), padding="SAME", name='layer11', kernel_regularizer=regularizer)
+  #layer11 = print_tensor_shape(layer11, 'layer11', layer11)
   return layer11
 
 tests.test_layers(layers)
@@ -257,7 +251,7 @@ def run():
 
   with tf.Session() as sess:
     # Augmentation - takes a long time, better run as separate script
-    #augment_dataset(os.path.join(data_dir, 'data_road/training'))
+    augment_dataset(os.path.join(data_dir, 'data_road/training'))
 
     # Placeholder for labels - batch, width, height, num_classes
     labels_placeholder = tf.placeholder(tf.int32, shape=(None, None, None, num_classes))
@@ -285,7 +279,7 @@ def run():
     helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob_placeholder, input_image_placeholder)
 
     def process_video_clip(image):
-      nonlocal sess, logits
+      nonlocal sess, logits, keep_prob_placeholder, input_image_placeholder
 
       # must be multiples of 32 for this model to work correctly
       # 1280x720 -> 576x320
@@ -293,7 +287,7 @@ def run():
       image_shape = image.shape
       im_softmax = sess.run(
           [tf.nn.softmax(logits)],
-          {keep_prob: 1.0, image_pl: [image]})
+          {keep_prob_placeholder: 1.0, input_image_placeholder: [image]})
 
       # im_softmax contains two columns - 0: road, 1: non-road
       # Create mask from road column
@@ -302,7 +296,7 @@ def run():
       # boolean mask with 3 dims
       mask = (im_softmax > 0.5).reshape(image_shape[0], image_shape[1], 1)
 
-      return image + (mask.astype(image.dtype)*[128,0,0])
+      return np.clip(image + (mask.astype(np.uint16)*[128,0,128]), 0, 255).astype(image.dtype)
 
     # OPTIONAL: Apply the trained model to a video
     clip1 = VideoFileClip(os.path.join(data_dir, 'project_video.mp4'))

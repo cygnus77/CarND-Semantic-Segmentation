@@ -25,17 +25,15 @@ For example, if the input image dimensions are 160x576 (rows x cols):
 |Layer 6| Convolutions | 
 |Layer 7| Convolutions | [1 5 18 4096] |
 |Layer 8| 1x1 Convolution|
-|Layer 9| Tranpose Conv. | [1 10 36 512] |
-|Layer 10|Tranpose Conv. |[1 20 72 256]|
-|Layer 11|Tranpose Conv. |[1 40 144 128]|
-|Layer 12|Tranpose Conv. |[1 80 288 64]|
-|Layer 13|Tranpose Conv. |[1 160 576 2]|
+|Layer 9| Tranpose Conv. 4x4 kernel, 2x2 stride | [1 10 36 512] |
+|Layer 10|Tranpose Conv. 4x4 kernel, 2x2 stride |[1 20 72 256]|
+|Layer 11|Tranpose Conv. 8x8 kernel and stride |[1 160 576 2]|
 
 Layers 1 to 7 are part of the pre-trained VGG network that was loaded from a saved model.
 
 Layer 8 is the 1x1 convolution that lies between the encode and decoder part of the FCN.
 
-Layers 9 to 13 are the upsampling layers that end in producing a 160x576 matrix for each class - in this case, two.
+Layers 9 to 11 are the upsampling layers that end in producing a 160x576 matrix for each class - in this case, two.
 
 #### Skip connections
 Skip connections are used to preserve higher level information from earlier layers and propogate them to layers in the decoder part of the FCN.
@@ -59,10 +57,19 @@ The label files were appropriately copied with matching filenames.
 
 ### Output Image Samples
 
+The model did well on most images like these:
+![simple](./umm_000032.png)
+![street signs](./umm_000087.png)
+![busy street](/uu_000081.png)
+
+But it did not cover all of the road on shaded, curved streets like this:
+![shaded street](./um_000073.png)
 
 ### Video
 I used a video provided by Udacity in term 1 for advanced lane finding project.
 The frames from this video were individually sent through the FCN for segmentation and the segmented image was saved with road areas highlighted in pink.
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=1IAcDALwW9s" target="_blank"><img src="http://img.youtube.com/vi/1IAcDALwW9s/0.jpg" alt="IMAGE ALT TEXT HERE" width="240" height="180" border="10" /></a>
 
 
 ### Setup
